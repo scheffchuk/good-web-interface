@@ -1,24 +1,36 @@
-# Example Next.js MCP Server
+# Web Interface Guidelines MCP Server
 
-**Uses `mcp-handler`**
+An MCP (Model Context Protocol) server that provides web interface design guidelines and best practices based on [interfaces.rauno.me](https://interfaces.rauno.me/).
+
+## What it does
+
+This server helps developers follow web interface best practices by providing:
+
+- **Interface Guidelines** - Get guidelines by category (typography, accessibility, performance, etc.)
+- **Search Functionality** - Find specific guidelines by keyword
+- **Pattern Validation** - Validate interface patterns against best practices
+- **Live Documentation** - Fetch the latest guidelines from GitHub
+- **Quick Tips** - Get scenario-based tips for common interface challenges
+
+## Available Tools
+
+1. `get_guidelines` - Get guidelines by category or all
+2. `search_guidelines` - Search guidelines by keyword
+3. `validate_pattern` - Validate interface patterns
+4. `get_updated_docs` - Fetch latest documentation from GitHub
+5. `get_quick_tips` - Get tips for forms, buttons, animations, etc.
 
 ## Usage
 
-This sample app uses the [Vercel MCP Adapter](https://www.npmjs.com/package/mcp-handler) that allows you to drop in an MCP server on a group of routes in any Next.js project.
+```bash
+# Start the server
+pnpm dev
 
-Update `app/[transport]/route.ts` with your tools, prompts, and resources following the [MCP TypeScript SDK documentation](https://github.com/modelcontextprotocol/typescript-sdk/tree/main?tab=readme-ov-file#server).
-
-## Notes for running on Vercel
-
-- To use the SSE transport, requires a Redis attached to the project under `process.env.REDIS_URL` and toggling the `disableSse` flag to `false` in `app/mcp/route.ts`
-- Make sure you have [Fluid compute](https://vercel.com/docs/functions/fluid-compute) enabled for efficient execution
-- After enabling Fluid compute, open `app/route.ts` and adjust `maxDuration` to 800 if you using a Vercel Pro or Enterprise account
-- [Deploy the Next.js MCP template](https://vercel.com/templates/next.js/model-context-protocol-mcp-with-next-js)
-
-## Sample Client
-
-`script/test-client.mjs` contains a sample client to try invocations.
-
-```sh
-node scripts/test-client.mjs https://mcp-for-next-js.vercel.app
+# Test with curl
+curl -X POST http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
 ```
+
+Built with Next.js and the `mcp-handler` package.
