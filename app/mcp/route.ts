@@ -6,15 +6,18 @@ async function fetchLatestDocs(): Promise<string | null> {
     const response = await fetch(
       "https://raw.githubusercontent.com/raunofreiberg/interfaces/main/README.md"
     );
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
     const content = await response.text();
-    return content;
+    return content.trim();
   } catch (error) {
     console.error("Failed to fetch latest docs:", error);
     return null;
   }
 }
 
-const guidelines: Record<string, string[]> = {
+const guidelines = {
   interactivity: [
     "Clicking the input label should focus the input field",
     "Inputs should be wrapped with a <form> to submit by pressing Enter",
@@ -87,7 +90,81 @@ const guidelines: Record<string, string[]> = {
     "Highlight the relevant input(s) on form error(s)",
     "Empty states should prompt to create a new item, with optional templates",
   ],
+} as const;
+
+type Category = keyof typeof guidelines;
+const categories = Object.keys(guidelines) as Category[];
+
+const quickTips = {
+  forms: [
+    "Inputs should be wrapped with a <form> to submit by pressing Enter",
+    "Use appropriate input types like password, email, etc",
+    "Font size for inputs should not be smaller than 16px to prevent iOS zooming on focus",
+    "Clicking the input label should focus the input field",
+    "Inputs should disable spellcheck and autocomplete attributes most of the time",
+    "Use HTML form validation with the required attribute when appropriate",
+  ],
+  buttons: [
+    "Buttons should be disabled after submission to avoid duplicate network requests",
+    "Disabled buttons should not have tooltips, they are not accessible",
+    "Icon only interactive elements should define an explicit aria-label",
+    "Hover states should not be visible on touch press, use @media (hover: hover)",
+    "Don't scale buttons on press from 1 → 0.8, but ~0.96, ~0.9, or so",
+  ],
+  animations: [
+    "Animation duration should not be more than 200ms for interactions to feel immediate",
+    "Looping animations should pause when not visible on the screen to offload CPU and GPU usage",
+    "Animation values should be proportional to the trigger size",
+    "Switching themes should not trigger transitions and animations on elements",
+    "Actions that are frequent and low in novelty should avoid extraneous animations",
+  ],
+  mobile: [
+    "Hover states should not be visible on touch press, use @media (hover: hover)",
+    "Font size for inputs should not be smaller than 16px to prevent iOS zooming on focus",
+    "Inputs should not auto focus on touch devices as it will open the keyboard and cover the screen",
+    "Apply muted and playsinline to <video /> tags to auto play on iOS",
+    "Disable the default iOS tap highlight with -webkit-tap-highlight-color: rgba(0,0,0,0), but always replace it with an appropriate alternative",
+  ],
+  accessibility: [
+    "Disabled buttons should not have tooltips, they are not accessible",
+    "Box shadow should be used for focus rings, not outline which won't respect radius",
+    "Icon only interactive elements should define an explicit aria-label",
+    "Images should always be rendered with <img> for screen readers and ease of copying from the right click menu",
+    "Illustrations built with HTML should have an explicit aria-label instead of announcing the raw DOM tree",
+  ],
+  optimizations: [
+    "Large blur() values for filter and backdrop-filter may be slow",
+    "Scaling and blurring filled rectangles will cause banding, use radial gradients instead",
+    "Sparingly enable GPU rendering with transform: translateZ(0) for unperformant animations",
+    "Auto-playing too many videos on iOS will choke the device, pause or even unmount off-screen videos",
+    "Detect and adapt to the hardware and network capabilities of the user's device",
+  ],
+} as const;
+
+type Scenario = keyof typeof quickTips;
+const scenarios = Object.keys(quickTips) as Scenario[];
+
+// Utility functions
+const titleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const formatList = (items: readonly string[]) => items.map((i) => `- ${i}`).join("\n");
+const fmtSection = (heading: string, items: readonly string[]) => `## ${heading}\n${formatList(items)}`;
+const fmtAllGuidelines = () => categories.map((cat) => fmtSection(titleCase(cat), guidelines[cat])).join("\n\n");
+
+// Pattern validation utilities
+const splitOnFirst = (text: string, tokens: RegExp) => {
+  const m = text.match(tokens);
+  if (!m) return null;
+  const idx = m.index ?? -1;
+  if (idx < 0) return null;
+  return {
+    before: text.slice(0, idx).trim(),
+    token: m[0],
+    after: text.slice(idx + m[0].length).trim(),
+  };
 };
+
+const NEG_RE = /\b(avoid|don'?t|do not|prevent)\b/i;
+const POS_RE = /\b(use|apply|ensure|leverage|should)\b/i;
 
 const handler = createMcpHandler(
   async (server) => {
@@ -96,31 +173,12 @@ const handler = createMcpHandler(
       "Get web interface guidelines by category",
       {
         category: z
-          .enum([
-            "interactivity",
-            "typography",
-            "motion",
-            "touch",
-            "accessibility",
-            "optimizations",
-            "design",
-            "all",
-          ])
+          .enum(["interactivity", "typography", "motion", "touch", "accessibility", "optimizations", "design", "all"])
           .optional(),
       },
       async ({ category = "all" }) => {
         if (category === "all") {
-          const allGuidelines = Object.entries(guidelines)
-            .map(
-              ([cat, rules]) =>
-                `## ${cat.charAt(0).toUpperCase() + cat.slice(1)}\n${rules
-                  .map((rule) => `- ${rule}`)
-                  .join("\n")}`
-            )
-            .join("\n\n");
-          return {
-            content: [{ type: "text", text: allGuidelines }],
-          };
+          return { content: [{ type: "text", text: fmtAllGuidelines() }] };
         }
 
         const categoryGuidelines = guidelines[category];
@@ -129,21 +187,19 @@ const handler = createMcpHandler(
             content: [
               {
                 type: "text",
-                text: `Category "${category}" not found. Available categories: ${Object.keys(
-                  guidelines
-                ).join(", ")}`,
+                text: `Category "${category}" not found. Available categories: ${categories.join(", ")}`,
               },
             ],
           };
         }
 
-        const formattedGuidelines = `## ${
-          category.charAt(0).toUpperCase() + category.slice(1)
-        } Guidelines\n${categoryGuidelines
-          .map((rule) => `- ${rule}`)
-          .join("\n")}`;
         return {
-          content: [{ type: "text", text: formattedGuidelines }],
+          content: [
+            {
+              type: "text",
+              text: fmtSection(`${titleCase(category)} Guidelines`, categoryGuidelines),
+            },
+          ],
         };
       }
     );
@@ -155,16 +211,21 @@ const handler = createMcpHandler(
         query: z.string(),
       },
       async ({ query }) => {
-        const results: string[] = [];
-        const searchTerm = query.toLowerCase();
+        const q = query.trim().toLowerCase();
+        if (!q) {
+          return {
+            content: [{ type: "text", text: "Query cannot be empty." }],
+          };
+        }
 
-        Object.entries(guidelines).forEach(([category, rules]) => {
-          rules.forEach((rule) => {
-            if (rule.toLowerCase().includes(searchTerm)) {
-              results.push(`**${category}**: ${rule}`);
+        const results: string[] = [];
+        for (const cat of categories) {
+          for (const rule of guidelines[cat]) {
+            if (rule.toLowerCase().includes(q)) {
+              results.push(`**${cat}**: ${rule}`);
             }
-          });
-        });
+          }
+        }
 
         if (results.length === 0) {
           return {
@@ -178,9 +239,7 @@ const handler = createMcpHandler(
           content: [
             {
               type: "text",
-              text: `Found ${
-                results.length
-              } guidelines matching "${query}":\n\n${results.join("\n\n")}`,
+              text: `Found ${results.length} guidelines matching "${query}":\n\n${results.join("\n\n")}`,
             },
           ],
         };
@@ -193,68 +252,60 @@ const handler = createMcpHandler(
       {
         pattern: z.string(),
         category: z
-          .enum([
-            "interactivity",
-            "typography",
-            "motion",
-            "touch",
-            "accessibility",
-            "optimizations",
-            "design",
-          ])
+          .enum(categories as [Category, ...Category[]])
           .optional(),
       },
       async ({ pattern, category }) => {
-        const relevantGuidelines = category
+        const pat = pattern.trim();
+        const patLower = pat.toLowerCase();
+
+        const source: Partial<typeof guidelines> = category
           ? { [category]: guidelines[category] }
           : guidelines;
-        const violations: string[] = [];
-        const recommendations: string[] = [];
 
-        Object.entries(relevantGuidelines).forEach(([cat, rules]) => {
-          rules.forEach((rule) => {
-            const lowerPattern = pattern.toLowerCase();
-            const lowerRule = rule.toLowerCase();
+        const issues: string[] = [];
+        const recs: string[] = [];
 
-            if (
-              lowerRule.includes("avoid") ||
-              lowerRule.includes("don't") ||
-              lowerRule.includes("prevent")
-            ) {
-              const issue = rule.split(/avoid|don't|prevent/i)[1]?.trim();
-              if (issue && lowerPattern.includes(issue.toLowerCase())) {
-                violations.push(`**${cat}**: ${rule}`);
+        for (const [cat, rules] of Object.entries(source) as [Category, readonly string[]][]) {
+          for (const rule of rules) {
+            const ruleLower = rule.toLowerCase();
+
+            // Negative guidance: flag if the "after" part is present in the pattern
+            if (NEG_RE.test(rule)) {
+              const split = splitOnFirst(rule, NEG_RE);
+              const target = split?.after?.toLowerCase();
+              if (target && target.length >= 3 && patLower.includes(target)) {
+                issues.push(`**${cat}**: ${rule}`);
               }
-            } else if (
-              lowerRule.includes("use") ||
-              lowerRule.includes("apply") ||
-              lowerRule.includes("ensure")
-            ) {
-              recommendations.push(`**${cat}**: ${rule}`);
+              continue;
             }
-          });
-        });
 
-        let result = `## Pattern Validation for: "${pattern}"\n\n`;
-
-        if (violations.length > 0) {
-          result += `### ⚠️ Potential Issues:\n${violations.join("\n")}\n\n`;
+            // Positive guidance: surface as recommendation if thematically relevant
+            if (POS_RE.test(ruleLower)) {
+              // Heuristic: show a subset that contains any keyword from the pattern
+              const anyWord = patLower
+                .split(/\W+/)
+                .filter(Boolean)
+                .some((w) => ruleLower.includes(w));
+              if (anyWord || !category) {
+                recs.push(`**${cat}**: ${rule}`);
+              }
+            }
+          }
         }
 
-        if (recommendations.length > 0) {
-          result += `### ✅ Relevant Recommendations:\n${recommendations
-            .slice(0, 5)
-            .join("\n")}\n\n`;
+        let out = `## Pattern Validation for: "${pat}"\n\n`;
+        if (issues.length) {
+          out += `### ⚠️ Potential Issues:\n${issues.join("\n")}\n\n`;
+        }
+        if (recs.length) {
+          out += `### ✅ Relevant Recommendations:\n${recs.slice(0, 5).join("\n")}\n\n`;
+        }
+        if (!issues.length && !recs.length) {
+          out += "No specific violations or recommendations found for this pattern.";
         }
 
-        if (violations.length === 0 && recommendations.length === 0) {
-          result +=
-            "No specific violations or recommendations found for this pattern.";
-        }
-
-        return {
-          content: [{ type: "text", text: result }],
-        };
+        return { content: [{ type: "text", text: out }] };
       }
     );
 
@@ -302,69 +353,17 @@ const handler = createMcpHandler(
       "get_quick_tips",
       "Get quick interface tips for common scenarios",
       {
-        scenario: z.enum([
-          "forms",
-          "buttons",
-          "animations",
-          "mobile",
-          "accessibility",
-          "optimizations",
-        ]),
+        scenario: z.enum(scenarios as [Scenario, ...Scenario[]]),
       },
       async ({ scenario }) => {
-        const tips: Record<string, string[]> = {
-          forms: [
-            "Inputs should be wrapped with a <form> to submit by pressing Enter",
-            "Use appropriate input types like password, email, etc",
-            "Font size for inputs should not be smaller than 16px to prevent iOS zooming on focus",
-            "Clicking the input label should focus the input field",
-            "Inputs should disable spellcheck and autocomplete attributes most of the time",
-            "Use HTML form validation with the required attribute when appropriate",
-          ],
-          buttons: [
-            "Buttons should be disabled after submission to avoid duplicate network requests",
-            "Disabled buttons should not have tooltips, they are not accessible",
-            "Icon only interactive elements should define an explicit aria-label",
-            "Hover states should not be visible on touch press, use @media (hover: hover)",
-            "Don't scale buttons on press from 1 → 0.8, but ~0.96, ~0.9, or so",
-          ],
-          animations: [
-            "Animation duration should not be more than 200ms for interactions to feel immediate",
-            "Looping animations should pause when not visible on the screen to offload CPU and GPU usage",
-            "Animation values should be proportional to the trigger size",
-            "Switching themes should not trigger transitions and animations on elements",
-            "Actions that are frequent and low in novelty should avoid extraneous animations",
-          ],
-          mobile: [
-            "Hover states should not be visible on touch press, use @media (hover: hover)",
-            "Font size for inputs should not be smaller than 16px to prevent iOS zooming on focus",
-            "Inputs should not auto focus on touch devices as it will open the keyboard and cover the screen",
-            "Apply muted and playsinline to <video /> tags to auto play on iOS",
-            "Disable the default iOS tap highlight with -webkit-tap-highlight-color: rgba(0,0,0,0), but always replace it with an appropriate alternative",
-          ],
-          accessibility: [
-            "Disabled buttons should not have tooltips, they are not accessible",
-            "Box shadow should be used for focus rings, not outline which won't respect radius",
-            "Icon only interactive elements should define an explicit aria-label",
-            "Images should always be rendered with <img> for screen readers and ease of copying from the right click menu",
-            "Illustrations built with HTML should have an explicit aria-label instead of announcing the raw DOM tree",
-          ],
-          optimizations: [
-            "Large blur() values for filter and backdrop-filter may be slow",
-            "Scaling and blurring filled rectangles will cause banding, use radial gradients instead",
-            "Sparingly enable GPU rendering with transform: translateZ(0) for unperformant animations",
-            "Auto-playing too many videos on iOS will choke the device, pause or even unmount off-screen videos",
-            "Detect and adapt to the hardware and network capabilities of the user's device",
-          ],
-        };
-
-        const scenarioTips = tips[scenario];
-        const formattedTips = `## ${
-          scenario.charAt(0).toUpperCase() + scenario.slice(1)
-        } Quick Tips\n\n${scenarioTips.map((tip) => `- ${tip}`).join("\n")}`;
-
+        const tips = quickTips[scenario];
         return {
-          content: [{ type: "text", text: formattedTips }],
+          content: [
+            {
+              type: "text",
+              text: fmtSection(`${titleCase(scenario)} Quick Tips`, tips),
+            },
+          ],
         };
       }
     );

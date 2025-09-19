@@ -25,8 +25,10 @@ Package manager: `pnpm` (version 8.15.7+)
 ## Testing
 
 - Test the MCP server: `node scripts/test-client.mjs [URL]`
-- Default test URL: `https://mcp-for-next-js.vercel.app`
-- Example: `node scripts/test-client.mjs https://mcp-for-next-js.vercel.app`
+- Default test URL: `https://mcp-for-next-js.vercel.app` (uses SSE transport)
+- HTTP client test: `node scripts/test-streamable-http-client.mjs [URL]`
+- Local testing: `node scripts/test-client.mjs http://localhost:3000`
+- Example: `node scripts/test-client.mjs https://good-web-interface.vercel.app`
 
 ## Architecture
 
@@ -38,17 +40,19 @@ Package manager: `pnpm` (version 8.15.7+)
 
 ### Available MCP Tools
 
-1. **get_guidelines** - Get guidelines by category (interactivity, typography, motion, touch, accessibility, performance, design, or all)
+1. **get_guidelines** - Get guidelines by category (interactivity, typography, motion, touch, accessibility, optimizations, design, or all)
 2. **search_guidelines** - Search for specific guidelines by keyword
 3. **validate_pattern** - Validate interface patterns against guidelines
-4. **get_updated_docs** - Fetch latest documentation from GitHub or website
-5. **get_quick_tips** - Get scenario-based tips (forms, buttons, animations, mobile, accessibility, performance)
+4. **get_updated_docs** - Fetch latest documentation from GitHub repository
+5. **get_quick_tips** - Get scenario-based tips (forms, buttons, animations, mobile, accessibility, optimizations)
 
 ### Key Files
 
-- `app/mcp/route.ts` - Main MCP server with 5 interface guideline tools
+- `app/mcp/route.ts` - Main MCP server with 5 interface guideline tools and hardcoded guidelines
 - `scripts/test-client.mjs` - SSE client for testing MCP functionality
 - `scripts/test-streamable-http-client.mjs` - HTTP client for testing
+- `next.config.ts` - Minimal Next.js configuration
+- `package.json` - Uses pnpm as package manager, includes MCP SDK and Zod dependencies
 
 ### MCP Server Configuration
 
@@ -57,8 +61,17 @@ The MCP server is configured with:
 - Verbose logging enabled
 - Max duration: 60 seconds
 - SSE disabled by default (`disableSse: true`)
+- Supports both HTTP POST and SSE transports
 - Fetches live data from GitHub: `https://raw.githubusercontent.com/raunofreiberg/interfaces/main/README.md`
-- Fetches live data from website: `https://interfaces.rauno.me/`
+- Guidelines are hardcoded in the server for performance (categories: interactivity, typography, motion, touch, accessibility, optimizations, design)
+
+### Implementation Details
+
+- Built with Next.js 15.2.4 and React 19
+- Uses `mcp-handler` package for MCP protocol implementation
+- Zod for runtime schema validation of tool parameters
+- All routes (GET, POST, DELETE) handled by the same handler in `app/mcp/route.ts`
+- Guidelines data is embedded directly in the server code for fast access
 
 ### Example Usage
 
@@ -74,6 +87,12 @@ curl -X POST http://localhost:3000/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "get_guidelines", "arguments": {"category": "accessibility"}}, "id": 2}'
+
+# Get optimizations guidelines
+curl -X POST http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "get_guidelines", "arguments": {"category": "optimizations"}}, "id": 4}'
 
 # Search for animation-related guidelines
 curl -X POST http://localhost:3000/mcp \
